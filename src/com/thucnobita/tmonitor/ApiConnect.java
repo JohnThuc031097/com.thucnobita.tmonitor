@@ -268,14 +268,13 @@ public class ApiConnect {
 		int indexTypeCode = 1;
 		int indexTypeCodeChild = 1;
 		int level = -1;
-		boolean isNotOther = false;
 		String typeCode = "";
 		String groupName = "";
 		String groupNameChild = "";
 
 		Map<String, List<MenuGroupDetail>> menuGroups = new HashMap<>();
-		Map<String, List<MenuGroup>> menuGroupsALC = new HashMap<>();
-		Map<String, List<MenuGroup>> menuGroupsBUF = new HashMap<>();
+		Map<String, List<MenuGroup>> menuGroupsTotal = new HashMap<>();
+		Map<String, List<String>> menuTypes = new HashMap<>();
 		List<MenuGroup> menuGroupsChild = new ArrayList<>();
 		MenuEngineering menuEngineering = new MenuEngineering();
 		List<ApiResponseModel> results = new ArrayList<ApiResponseModel>();
@@ -300,7 +299,7 @@ public class ApiConnect {
 						// System.out.println(String.format("[%s][%s]: %s", menuGroup.getCode(),
 						// menuGroup.getName(), menuGroupDetails.size()));
 						for (MenuGroupDetail item : menuGroupDetails) {
-							// System.out.println(String.format("%s - %s", index, item.getName()));
+							System.out.println(String.format("%s - %s", index, item.getName()));
 							item.setOrderNumberItem(index);
 							menuGroupDetailsNew.add(item);
 							index++;
@@ -312,35 +311,39 @@ public class ApiConnect {
 					}
 					System.out.println("[Updated item SO]:" + typeCode);
 
-					if (!isNotOther) {
-						List<MenuGroup> menuGroupsKey = new ArrayList<>();
-						List<MenuGroup> menuGroupsKeyNew = new ArrayList<>();
-						String typeMenu = "ALC";
-						int index = 1;
-						for (String item : menuGroups.keySet()) {
-							menuGroupsKey.add(ApiConnect.gson.fromJson(item, MenuGroup.class));
-						}
-						if (menuGroupsChild.size() > 0) {
-							menuGroupsKey.addAll(menuGroupsChild);
-						}
-						for (MenuGroup item : menuGroupsKey) {
-							item.setOrderNo(index++);
-							menuGroupsKeyNew.add(item);
-						}
-						typeMenu = menuGroupsKeyNew.get(0).getCode().split("_")[0];
-						if (typeCode.equals("ALC")) {
-							menuGroupsALC.put(typeCode, menuGroupsKeyNew);
-						} else {
-							menuGroupsBUF.put(typeCode, menuGroupsKeyNew);
-						}
-						System.out.println("[Updated MenuGroup NOT Other]:" + typeCode);
+					List<MenuGroup> menuGroupsKey = new ArrayList<>();
+					List<MenuGroup> menuGroupsKeyNew = new ArrayList<>();
+					int index = 1;
+					for (String item : menuGroups.keySet()) {
+						menuGroupsKey.add(ApiConnect.gson.fromJson(item, MenuGroup.class));
 					}
+					if (menuGroupsChild.size() > 0) {
+						menuGroupsKey.addAll(menuGroupsChild);
+					}
+					for (MenuGroup item : menuGroupsKey) {
+						item.setOrderNo(index++);
+						menuGroupsKeyNew.add(item);
+					}
+
+					String typeMenu = menuGroupsKeyNew.get(0).getCode().split("_")[0];
+					List<String> typecodes = new ArrayList<>();
+					if (menuTypes.containsKey(typeMenu)) {
+						typecodes = menuTypes.get(typeMenu);
+						typecodes.add(typeCode);
+						menuTypes.put(typeMenu, typecodes);
+					} else {
+						typecodes.add(typeCode);
+						menuTypes.put(typeMenu, typecodes);
+					}
+
+					menuGroupsTotal.put(typeCode, menuGroupsKeyNew);
+					System.out.println("[Updated MenuGroup NOT Other]:" + typeCode);
+
 					typeCode = "";
 					groupName = "";
 					groupNameChild = "";
 					indexTypeCode = 1;
 					indexTypeCodeChild = 1;
-					isNotOther = false;
 					menuGroups = new HashMap<>();
 				} else {
 					if (groupName == "")
@@ -351,8 +354,11 @@ public class ApiConnect {
 					}
 
 					MenuGroup menuGroup = new MenuGroup();
-					menuGroup.setCode(String.format(level == -1 ? "%s_%s_%s" : "%s_%s", menuExcelModel.getGroupCode(),
+					menuGroup.setCode(String.format("%s_%s_%s", menuExcelModel.getGroupCode(),
 							menuExcelModel.getTypeCode(), indexTypeCode));
+					if (level == 0) {
+						menuGroup.setCode(menuExcelModel.getGroupName().toUpperCase());
+					}
 					menuGroup.setName(
 							String.format("%s.%s", menuExcelModel.getGroupCode(), menuExcelModel.getGroupName()));
 					menuGroup.setNameEn(
@@ -379,12 +385,13 @@ public class ApiConnect {
 
 					} else {
 
-						MenuGroupDetail menuGroupDetail = new MenuGroupDetail(menuExcelModel.getGroupChildCode(),
+						MenuGroupDetail menuGroupDetail = new MenuGroupDetail(
+								String.format("%s_%s_%s", menuExcelModel.getGroupChildCode(),
+										menuExcelModel.getTypeCode(), indexTypeCodeChild),
 								MenuGroupDetailType.MENU_GROUP, menuExcelModel.getGroupChildName());
 
 						List<MenuGroupDetail> menuGroupDetails = new ArrayList<>();
 						if (!menuGroups.containsKey(key)) {
-							isNotOther = true;
 							menuGroupsChild.add(menuGroup);
 							menuGroupDetails.add(menuGroupDetail);
 							menuGroups.put(key, menuGroupDetails);
@@ -394,12 +401,18 @@ public class ApiConnect {
 							groupNameChild = menuExcelModel.getGroupChildName();
 						}
 						if (!groupNameChild.equals(menuExcelModel.getGroupChildName())) {
+							indexTypeCodeChild++;
+							menuGroupDetail = new MenuGroupDetail(
+									String.format("%s_%s_%s", menuExcelModel.getGroupChildCode(),
+											menuExcelModel.getTypeCode(), indexTypeCodeChild),
+									MenuGroupDetailType.MENU_GROUP, menuExcelModel.getGroupChildName());
+
 							menuGroupDetails = menuGroups.get(key);
 							menuGroupDetails.add(menuGroupDetail);
 							menuGroups.put(key, menuGroupDetails);
 
 							groupNameChild = menuExcelModel.getGroupChildName();
-							indexTypeCodeChild++;
+
 						}
 
 						MenuGroup menuGroupChild = new MenuGroup();
@@ -427,42 +440,51 @@ public class ApiConnect {
 					}
 				}
 			}
-			for (Map.Entry<String, List<MenuGroup>> entry : menuGroupsBUF.entrySet()) {
+			for (Map.Entry<String, List<String>> entry : menuTypes.entrySet()) {
 				String params = "";
-				typeCode = entry.getKey();
-				List<MenuGroup> menuGroupsItemBUF = entry.getValue();
-				List<MenuGroup> menuGroupsItemALC = new ArrayList<>();
-				String typeMenu = "BUF";
-				List<String> menuGroupsItemKey = new ArrayList<>();
+				String mMenuType = entry.getKey();
+				List<String> mTypeCode = entry.getValue();
+				List<MenuGroup> mMenuGroups = new ArrayList<>();
+				List<String> mMenuGroupTexts = new ArrayList<>();
 
-				for (MenuGroup item : menuGroupsItem) {
-					menuGroupsItemKey.add(item.getCode());
-				}
-
-				menuEngineering.setOrderCategory(new OrderCategory(typeCode));
-				menuEngineering.setMenuType(typeMenu);
-				menuEngineering.setMenuGroups(menuGroupsItem);
-				params = StringConvert.nameToJson(ApiConnect.gson.toJson(menuEngineering)).replace("orderNo",
-						"order-no");
-				results.add(this.callApi("POST", ip, Constants.URL_API_SO_MENU_ENGINEERING + "/" + type, params, 0));
-				System.out.println("[Updated Engineering]:" + typeCode);
-
-				if (menuCateGoryExcelModels != null) {
-					if (menuCateGoryExcelModels.size() > 0) {
-						for (MenuCateGoryExcelModel category : menuCateGoryExcelModels) {
-							if (category.getCategoryCode().equals(typeCode)) {
-								String[] splitNameImage = category.getCategoryImage().split("\\\\");
-								String nameImage = splitNameImage[splitNameImage.length - 1];
-								results.add(this.postCOMenuCategory(type, ip, typeMenu.equals("ALC") ? 1 : 2, typeCode,
-										category.getCategoryName(), category.getCategoryNameEN(),
-										String.format("/category/%s", nameImage), menuGroupsItemKey));
-							}
+				for (String itemTypeCode : mTypeCode) {
+					if (mMenuType.equals("BUF")) {
+						for (String mItemTypeCode : menuTypes.get("ALC")) {
+							mMenuGroups.addAll(menuGroupsTotal.get(mItemTypeCode));
 						}
-						System.out.println("[Updated Menu Order Category]:" + typeCode);
+					}
+					mMenuGroups.addAll(menuGroupsTotal.get(itemTypeCode));
+
+					for (MenuGroup item : mMenuGroups) {
+						mMenuGroupTexts.add(item.getCode());
+					}
+
+					menuEngineering.setOrderCategory(new OrderCategory(itemTypeCode));
+					menuEngineering.setMenuType(mMenuType);
+					menuEngineering.setMenuGroups(mMenuGroups);
+					params = StringConvert.nameToJson(ApiConnect.gson.toJson(menuEngineering)).replace("orderNo",
+							"order-no");
+					results.add(
+							this.callApi("POST", ip, Constants.URL_API_SO_MENU_ENGINEERING + "/" + type, params, 0));
+					System.out.println("[Updated Engineering]:" + itemTypeCode);
+
+					if (menuCateGoryExcelModels != null) {
+						if (menuCateGoryExcelModels.size() > 0) {
+							for (MenuCateGoryExcelModel category : menuCateGoryExcelModels) {
+								if (category.getCategoryCode().equals(itemTypeCode)) {
+									String[] splitNameImage = category.getCategoryImage().split("\\\\");
+									String nameImage = splitNameImage[splitNameImage.length - 1];
+									results.add(this.postCOMenuCategory(type, ip, mMenuType.equals("ALC") ? 1 : 2,
+											itemTypeCode, category.getCategoryName(), category.getCategoryNameEN(),
+											String.format("/category/%s", nameImage), mMenuGroupTexts));
+								}
+							}
+							System.out.println("[Updated Menu Order Category]:" + itemTypeCode);
+						}
 					}
 				}
-
 			}
+
 		} catch (Exception e) {
 			e.printStackTrace();
 			ApiResponseModel error = new ApiResponseModel();
